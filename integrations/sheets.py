@@ -12,9 +12,23 @@ SCOPES = [
 ]
 
 
+import json
+import os
+
 def get_client():
-    """Подключается к Google Sheets и возвращает клиент"""
-    creds = Credentials.from_service_account_file(GOOGLE_CREDENTIALS, scopes=SCOPES)
+    """Подключается к Google Sheets — читает credentials из файла или переменной окружения"""
+    
+    # На Railway credentials передаются через переменную окружения
+    credentials_json = os.getenv("GOOGLE_CREDENTIALS_JSON")
+    
+    if credentials_json:
+        # Railway — читаем из переменной окружения
+        info = json.loads(credentials_json)
+        creds = Credentials.from_service_account_info(info, scopes=SCOPES)
+    else:
+        # Локально — читаем из файла
+        creds = Credentials.from_service_account_file(GOOGLE_CREDENTIALS, scopes=SCOPES)
+    
     return gspread.authorize(creds)
 
 
