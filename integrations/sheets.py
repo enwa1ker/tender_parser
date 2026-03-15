@@ -12,23 +12,21 @@ SCOPES = [
 ]
 
 
-import json
-import os
-
 def get_client():
-    """Подключается к Google Sheets — читает credentials из файла или переменной окружения"""
-    
-    # На Railway credentials передаются через переменную окружения
-    credentials_json = os.getenv("GOOGLE_CREDENTIALS_JSON")
-    
-    if credentials_json:
-        # Railway — читаем из переменной окружения
+    """Подключается к Google Sheets"""
+    import json, base64, os
+
+    credentials_b64 = os.getenv("GOOGLE_CREDENTIALS_JSON")
+
+    if credentials_b64:
+        # Railway — декодируем из base64
+        credentials_json = base64.b64decode(credentials_b64).decode("utf-8")
         info = json.loads(credentials_json)
         creds = Credentials.from_service_account_info(info, scopes=SCOPES)
     else:
         # Локально — читаем из файла
         creds = Credentials.from_service_account_file(GOOGLE_CREDENTIALS, scopes=SCOPES)
-    
+
     return gspread.authorize(creds)
 
 
