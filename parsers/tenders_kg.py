@@ -22,10 +22,8 @@ def create_session():
     session.verify = False
 
     try:
-        r1 = session.get(f"{BASE_URL}/menu.php", timeout=15)
-        print(f"[tenders.kg] menu.php статус: {r1.status_code}, куки: {dict(session.cookies)}")
-        r2 = session.post(f"{BASE_URL}/menu.php", data={"guest": "1"}, timeout=15)
-        print(f"[tenders.kg] guest login статус: {r2.status_code}, куки: {dict(session.cookies)}")
+        session.get(f"{BASE_URL}/menu.php", timeout=15)
+        session.post(f"{BASE_URL}/menu.php", data={"guest": "1"}, timeout=15)
     except Exception as e:
         print(f"[tenders.kg] Ошибка входа: {e}")
 
@@ -50,7 +48,6 @@ def get_tenders(pages: int = 2) -> list[dict]:
         try:
             response = session.get(url, timeout=15)
             response.encoding = "utf-8"
-            print(f"[tenders.kg] Размер страницы: {len(response.text)}, статус: {response.status_code}")
         except Exception as e:
             print(f"[tenders.kg] Ошибка на странице {page}: {e}")
             continue
