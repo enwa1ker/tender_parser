@@ -1,0 +1,21 @@
+# Секретные ключи — НИКОГДА не в Git
+.env
+
+# База данных — у каждого своя локальная
+seen_tenders.db
+
+# Виртуальное окружение — не нужно в репозитории
+venv/
+
+# Кэш Python
+__pycache__/
+*.pyc
+
+# Google ключ — это файл с секретом
+credentials.json
+google_credentials.json
+*.json
+
+# Логи
+*.log
+logs/
