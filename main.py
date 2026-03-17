@@ -15,7 +15,7 @@ from core.filter import is_relevant
 from core.database import init_db, is_seen, mark_seen
 
 from integrations.sheets import init_sheets, add_tender
-from integrations.telegram_bot import notify_tender, notify_error
+from integrations.telegram_bot import notify_tender, notify_error, handle_commands
 
 
 def run_parser():
@@ -57,7 +57,7 @@ def run_parser():
 
         # Пропускаем если не по теме
         if not is_relevant(tender["title"]):
-            mark_seen(tender["id"], tender["source"])  # запоминаем чтобы не проверять снова
+            mark_seen(tender["id"], tender["source"], title=tender.get("title", ""), url=tender.get("url", ""))  # запоминаем чтобы не проверять снова
             continue
 
         # Новый релевантный тендер!
@@ -66,7 +66,7 @@ def run_parser():
         try:
             add_tender(tender)          # → Google Sheets
             notify_tender(tender)       # → Telegram
-            mark_seen(tender["id"], tender["source"])  # → SQLite
+            mark_seen(tender["id"], tender["source"], title=tender.get("title", ""), url=tender.get("url", ""))  # → SQLite
             new_count += 1
             time.sleep(1)  # пауза между отправками
         except Exception as e:
@@ -93,8 +93,10 @@ def main():
     print("\n⏳ Ожидаю следующей проверки... (Ctrl+C для остановки)")
     while True:
         schedule.run_pending()
+        handle_commands()
         time.sleep(60)  # проверяем расписание каждую минуту
 
 
 if __name__ == "__main__":
     main()
+
