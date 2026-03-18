@@ -7,6 +7,7 @@ load_dotenv()
 # Секретные данные — только из .env, никогда не хардкодим в коде
 TELEGRAM_BOT_TOKEN    = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_IDS     = os.getenv("TELEGRAM_CHAT_IDS", "").split(",")
+TELEGRAM_ADMIN_IDS    = [x.strip() for x in os.getenv("TELEGRAM_ADMIN_IDS", "").split(",") if x.strip()]
 GOOGLE_SHEET_ID       = os.getenv("GOOGLE_SHEET_ID")
 GOOGLE_CREDENTIALS    = os.getenv("GOOGLE_CREDENTIALS_FILE", "credentials.json")
 CHECK_INTERVAL_HOURS  = int(os.getenv("CHECK_INTERVAL_HOURS", "3"))

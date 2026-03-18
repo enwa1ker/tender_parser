@@ -6,6 +6,7 @@ import urllib3
 from bs4 import BeautifulSoup
 from datetime import datetime
 import time
+import os
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -20,6 +21,16 @@ def create_session():
     session = requests.Session()
     session.headers.update(HEADERS)
     session.verify = False
+
+    proxy = (
+        os.getenv("TENDERS_KG_PROXY")
+        or os.getenv("HTTPS_PROXY")
+        or os.getenv("HTTP_PROXY")
+        or os.getenv("https_proxy")
+        or os.getenv("http_proxy")
+    )
+    if proxy:
+        session.proxies.update({"http": proxy, "https": proxy})
 
     try:
         session.get(f"{BASE_URL}/menu.php", timeout=15)

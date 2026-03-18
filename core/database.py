@@ -3,6 +3,7 @@
 
 import sqlite3
 import os
+from datetime import datetime, date
 
 # Путь к файлу базы данных — создастся автоматически рядом с этим файлом
 DB_PATH = os.path.join(os.path.dirname(__file__), "..", "seen_tenders.db")
@@ -25,6 +26,20 @@ def init_db():
             added_at    TEXT NOT NULL,
             title       TEXT DEFAULT '',
             url         TEXT DEFAULT ''
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS subscribers (
+            chat_id     TEXT PRIMARY KEY,
+            added_at    TEXT NOT NULL
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS kv_store (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL
         )
     """)
 
@@ -63,8 +78,6 @@ def is_seen(tender_id: str) -> bool:
 
 def mark_seen(tender_id: str, source: str, title: str = "", url: str = ""):
     """Запоминает тендер"""
-    from datetime import datetime
-
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -117,3 +130,75 @@ def get_last_tenders(limit: int = 10) -> list:
         }
         for row in rows
     ]
+
+
+def subscribe(chat_id: str) -> bool:
+    """Добавляет чат в подписчики. Возвращает True если добавили (или уже был)."""
+    chat_id = str(chat_id).strip()
+    if not chat_id:
+        return False
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT OR IGNORE INTO subscribers (chat_id, added_at) VALUES (?, ?)",
+        (chat_id, datetime.now().strftime("%d.%m.%Y %H:%M")),
+    )
+    conn.commit()
+    conn.close()
+    return True
+
+
+def unsubscribe(chat_id: str) -> bool:
+    """Удаляет чат из подписчиков. Возвращает True если удалили."""
+    chat_id = str(chat_id).strip()
+    if not chat_id:
+        return False
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM subscribers WHERE chat_id = ?", (chat_id,))
+    changed = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return changed
+
+
+def get_subscribers() -> list[str]:
+    """Список chat_id подписчиков."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT chat_id FROM subscribers ORDER BY added_at ASC")
+    rows = cursor.fetchall()
+    conn.close()
+    return [r[0] for r in rows]
+
+
+def kv_get(key: str, default: str | None = None) -> str | None:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT value FROM kv_store WHERE key = ?", (key,))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row else default
+
+
+def kv_set(key: str, value: str) -> None:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO kv_store(key, value) VALUES(?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (key, value),
+    )
+    conn.commit()
+    conn.close()
+
+
+def count_tenders_for_date(day: date) -> int:
+    """Считает, сколько тендеров добавили в seen_tenders за дату (локально по added_at)."""
+    day_str = day.strftime("%d.%m.%Y")
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM seen_tenders WHERE added_at LIKE ?", (f"{day_str}%",))
+    count = cursor.fetchone()[0]
+    conn.close()
+    return int(count)

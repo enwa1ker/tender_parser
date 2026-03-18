@@ -6,6 +6,7 @@ seen_tenders.db
 
 # Виртуальное окружение — не нужно в репозитории
 venv/
+.venv/
 
 # Кэш Python
 __pycache__/
@@ -19,3 +20,6 @@ google_credentials.json
 # Логи
 *.log
 logs/
+
+# Runtime state
+telegram_offset.txt
