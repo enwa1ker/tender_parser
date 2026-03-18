@@ -138,15 +138,29 @@ def handle_commands():
     Проверяет новые команды от пользователей и отвечает на них.
     Вызывается из main.py в основном цикле.
     """
-    from core.database import get_stats, get_last_tenders, subscribe, unsubscribe, get_subscribers
+    from core.database import (
+        get_stats,
+        get_last_tenders,
+        subscribe,
+        unsubscribe,
+        get_subscribers,
+        kv_get,
+        kv_set,
+    )
 
-    # Читаем последний обработанный offset из файла
-    offset_file = "telegram_offset.txt"
-    try:
-        with open(offset_file) as f:
-            offset = int(f.read().strip())
-    except Exception:
-        offset = 0
+    # Offset храним в SQLite (на Railway файловая система не всегда сохраняется между рестартами).
+    # Фоллбек: старый telegram_offset.txt (локально).
+    offset = 0
+    offset_str = kv_get("telegram:offset")
+    if offset_str and offset_str.isdigit():
+        offset = int(offset_str)
+    else:
+        offset_file = "telegram_offset.txt"
+        try:
+            with open(offset_file) as f:
+                offset = int(f.read().strip())
+        except Exception:
+            offset = 0
 
     if not TELEGRAM_BOT_TOKEN:
         return
@@ -215,6 +229,15 @@ def handle_commands():
 
     updates = get_updates(offset)
     if not updates:
+        # Если offset "улетел" в будущее, бот никогда не увидит новые апдейты.
+        # Восстановление: берём список апдейтов с offset=0 и просто выставляем offset на последний id+1.
+        if offset > 0:
+            probe = get_updates(0)
+            if probe:
+                max_id = max([u.get("update_id", -1) for u in probe if isinstance(u.get("update_id"), int)] or [-1])
+                if max_id >= 0:
+                    kv_set("telegram:offset", str(max_id + 1))
+        return
         return
 
     max_update_id = offset - 1
@@ -256,7 +279,10 @@ def handle_commands():
         if not chat_id or not text:
             continue
 
-        cmd = text.split()[0].lower()
+        cmd = text.split()[0].strip().lower()
+        # В группах Telegram может присылать "/start@BotName"
+        if "@" in cmd:
+            cmd = cmd.split("@", 1)[0]
         if cmd in ("/start", "/старт"):
             subscribe(chat_id)
             _send_help(chat_id)
@@ -307,8 +333,11 @@ def handle_commands():
 
     # Сохраняем новый offset (следующий после последнего update_id)
     new_offset = max_update_id + 1 if max_update_id >= 0 else offset
+    kv_set("telegram:offset", str(new_offset))
+
+    # Локальный фоллбек (не критично, если не получится)
     try:
-        with open(offset_file, "w") as f:
+        with open("telegram_offset.txt", "w") as f:
             f.write(str(new_offset))
-    except Exception as e:
-        print(f"[Telegram] Не смог сохранить offset: {e}")
+    except Exception:
+        pass
