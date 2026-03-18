@@ -214,7 +214,7 @@ def handle_commands():
                 if _is_admin(chat_id)
                 else ""
             )
-            f"Сейчас подписчиков: <b>{subs_count}</b>",
+            + f"Сейчас подписчиков: <b>{subs_count}</b>",
             chat_id=chat_id,
             buttons=buttons,
         )
