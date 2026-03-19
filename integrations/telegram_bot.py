@@ -213,15 +213,15 @@ def handle_commands():
         }, timeout=10)
 
     def _send_subscribers(chat_id: str):
-    subs = get_subscribers()
-    if not subs:
-        send_message("Подписчиков пока нет.", chat_id=chat_id)
-        return
-    msg = f"👥 <b>Подписчики ({len(subs)}):</b>\n\n"
-    for s in subs:
-        name = s["username"] if s["username"] else f"id: {s['chat_id']}"
-        msg += f"• {name} — с {s['added_at']}\n"
-    send_message(msg, chat_id=chat_id)
+        subs = get_subscribers()
+        if not subs:
+            send_message("Подписчиков пока нет.", chat_id=chat_id)
+            return
+        msg = f"👥 <b>Подписчики ({len(subs)}):</b>\n\n"
+        for s in subs:
+            name = s["username"] if s["username"] else f"id: {s['chat_id']}"
+            msg += f"• {name} — с {s['added_at']}\n"
+        send_message(msg, chat_id=chat_id)
 
     updates = get_updates(offset)
     if not updates:
