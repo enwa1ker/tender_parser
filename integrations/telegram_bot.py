@@ -91,15 +91,13 @@ def _sheet_url() -> str:
     return f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEET_ID}"
 
 
-def broadcast(text: str, buttons: list | None = None) -> bool:
-    """Отправляет сообщение всем подписчикам (или по старому списку TELEGRAM_CHAT_IDS)."""
+def broadcast(text: str, buttons: list = None) -> bool:
     from core.database import get_subscribers
-
     subscribers = get_subscribers()
-    targets = subscribers if subscribers else [str(x).strip() for x in TELEGRAM_CHAT_IDS if str(x).strip()]
+    targets = [s["chat_id"] for s in subscribers] if subscribers else [str(x).strip() for x in TELEGRAM_CHAT_IDS if str(x).strip()]
     ok = True
-    for chat_id in targets:
-        ok = send_message(text, chat_id=chat_id, buttons=buttons) and ok
+    for cid in targets:
+        ok = send_message(text, chat_id=cid, buttons=buttons) and ok
     return ok
 
 
@@ -215,12 +213,15 @@ def handle_commands():
         }, timeout=10)
 
     def _send_subscribers(chat_id: str):
-        subs = get_subscribers()
-        if not subs:
-            send_message("Подписчиков пока нет.", chat_id=chat_id)
-            return
-        msg = "👥 <b>Подписчики</b>\n\n" + "\n".join([f"- <code>{s}</code>" for s in subs])
-        send_message(msg, chat_id=chat_id)
+    subs = get_subscribers()
+    if not subs:
+        send_message("Подписчиков пока нет.", chat_id=chat_id)
+        return
+    msg = f"👥 <b>Подписчики ({len(subs)}):</b>\n\n"
+    for s in subs:
+        name = s["username"] if s["username"] else f"id: {s['chat_id']}"
+        msg += f"• {name} — с {s['added_at']}\n"
+    send_message(msg, chat_id=chat_id)
 
     updates = get_updates(offset)
     if not updates:
@@ -265,6 +266,7 @@ def handle_commands():
             continue
 
         # 2) Обработка обычных команд (/start, /статус, /список, /стоп)
+        # 2) Обработка обычных команд (/start, /статус, /список, /стоп)
         msg_obj = update.get("message") or update.get("edited_message")
         if not msg_obj:
             continue
@@ -274,19 +276,23 @@ def handle_commands():
         if not chat_id or not text:
             continue
 
+        # Извлекаем username — добавь эти строки сюда
+        username = msg_obj.get("from", {}).get("username", "") or ""
+        first_name = msg_obj.get("from", {}).get("first_name", "") or ""
+        display_name = f"@{username}" if username else first_name
+
         cmd = text.split()[0].strip().lower()
-        # В группах Telegram может присылать "/start@BotName"
         if "@" in cmd:
             cmd = cmd.split("@", 1)[0]
         if cmd in ("/start", "/старт"):
-            subscribe(chat_id)
+            subscribe(chat_id, username=display_name)  # ← добавили display_name
             _send_help(chat_id)
         elif text == "📋 Список тендеров":
             _send_list(chat_id)
         elif text == "📊 Статистика":
             _send_status(chat_id)
         elif text == "✅ Подписаться":
-            subscribe(chat_id)
+            subscribe(chat_id, username=display_name)  # ← добавили display_name
             send_message("✅ Вы подписаны!", chat_id=chat_id)
         elif text == "⛔ Отписаться":
             unsubscribe(chat_id)

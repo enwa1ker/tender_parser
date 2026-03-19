@@ -32,7 +32,8 @@ def init_db():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS subscribers (
             chat_id     TEXT PRIMARY KEY,
-            added_at    TEXT NOT NULL
+            added_at    TEXT NOT NULL,
+            username    TEXT DEFAULT ''
         )
     """)
 
@@ -43,13 +44,17 @@ def init_db():
         )
     """)
 
-    # Добавляем столбцы если их нет (для старой базы)
+    # Миграция для старой базы
     try:
         cursor.execute("ALTER TABLE seen_tenders ADD COLUMN title TEXT DEFAULT ''")
     except Exception:
         pass
     try:
         cursor.execute("ALTER TABLE seen_tenders ADD COLUMN url TEXT DEFAULT ''")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE subscribers ADD COLUMN username TEXT DEFAULT ''")
     except Exception:
         pass
 
@@ -132,16 +137,17 @@ def get_last_tenders(limit: int = 10) -> list:
     ]
 
 
-def subscribe(chat_id: str) -> bool:
-    """Добавляет чат в подписчики. Возвращает True если добавили (или уже был)."""
+def subscribe(chat_id: str, username: str = "") -> bool:
+    """Добавляет чат в подписчики"""
     chat_id = str(chat_id).strip()
     if not chat_id:
         return False
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT OR IGNORE INTO subscribers (chat_id, added_at) VALUES (?, ?)",
-        (chat_id, datetime.now().strftime("%d.%m.%Y %H:%M")),
+        "INSERT INTO subscribers (chat_id, added_at, username) VALUES (?, ?, ?) "
+        "ON CONFLICT(chat_id) DO UPDATE SET username = excluded.username",
+        (chat_id, datetime.now().strftime("%d.%m.%Y %H:%M"), username),
     )
     conn.commit()
     conn.close()
@@ -162,14 +168,14 @@ def unsubscribe(chat_id: str) -> bool:
     return changed
 
 
-def get_subscribers() -> list[str]:
-    """Список chat_id подписчиков."""
+def get_subscribers() -> list[dict]:
+    """Список подписчиков с username"""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT chat_id FROM subscribers ORDER BY added_at ASC")
+    cursor.execute("SELECT chat_id, username, added_at FROM subscribers ORDER BY added_at ASC")
     rows = cursor.fetchall()
     conn.close()
-    return [r[0] for r in rows]
+    return [{"chat_id": r[0], "username": r[1] or "", "added_at": r[2]} for r in rows]
 
 
 def kv_get(key: str, default: str | None = None) -> str | None:
