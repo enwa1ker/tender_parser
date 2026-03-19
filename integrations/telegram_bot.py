@@ -194,30 +194,25 @@ def handle_commands():
 
     def _send_help(chat_id: str):
         subs_count = len(get_subscribers())
-        buttons = [
-            {"text": "📋 Список", "data": "список"},
-            {"text": "📊 Статус", "data": "статус"},
-            {"text": "⛔ Стоп", "data": "стоп"},
-        ]
-        send_message(
-            "Привет! Я мониторю тендеры и присылаю новые.\n\n"
-            "Команды:\n"
-            "/старт — подписаться\n"
-            "/список — последние 10 тендеров\n"
-            "/статус — статистика\n"
-            "/стоп — отписаться\n\n"
-            + (
-                "\nАдмин-команды:\n"
-                "/подписчики — список подписчиков\n"
-                "/добавить &lt;chat_id&gt; — подписать партнёра\n"
-                "/удалить &lt;chat_id&gt; — отписать партнёра\n"
-                if _is_admin(chat_id)
-                else ""
-            )
-            + f"Сейчас подписчиков: <b>{subs_count}</b>",
-            chat_id=chat_id,
-            buttons=buttons,
-        )
+    
+        # Постоянная клавиатура внизу
+        keyboard_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        requests.post(keyboard_url, json={
+            "chat_id": chat_id,
+            "text": (
+                "👋 Привет! Я мониторю тендеры.\n\n"
+                "Выбери действие:"
+            ),
+            "parse_mode": "HTML",
+            "reply_markup": {
+                "keyboard": [
+                    [{"text": "📋 Список тендеров"}, {"text": "📊 Статистика"}],
+                    [{"text": "✅ Подписаться"},      {"text": "⛔ Отписаться"}],
+                ],
+                "resize_keyboard": True,
+                "persistent": True,
+            }
+        }, timeout=10)
 
     def _send_subscribers(chat_id: str):
         subs = get_subscribers()
@@ -286,6 +281,16 @@ def handle_commands():
         if cmd in ("/start", "/старт"):
             subscribe(chat_id)
             _send_help(chat_id)
+        elif text == "📋 Список тендеров":
+            _send_list(chat_id)
+        elif text == "📊 Статистика":
+            _send_status(chat_id)
+        elif text == "✅ Подписаться":
+            subscribe(chat_id)
+            send_message("✅ Вы подписаны!", chat_id=chat_id)
+        elif text == "⛔ Отписаться":
+            unsubscribe(chat_id)
+            send_message("⛔ Вы отписались.", chat_id=chat_id)
         elif cmd in ("/help",):
             _send_help(chat_id)
         elif cmd in ("/список", "/list"):
@@ -311,7 +316,7 @@ def handle_commands():
             else:
                 parts = text.split()
                 if len(parts) < 2:
-                    send_message("Формат: /добавить <chat_id>", chat_id=chat_id)
+                    send_message("Формат: /добавить chat_id", chat_id=chat_id)
                 else:
                     target = parts[1].strip()
                     subscribe(target)
@@ -322,7 +327,7 @@ def handle_commands():
             else:
                 parts = text.split()
                 if len(parts) < 2:
-                    send_message("Формат: /удалить <chat_id>", chat_id=chat_id)
+                    send_message("Формат: /удалить chat_id", chat_id=chat_id)
                 else:
                     target = parts[1].strip()
                     ok = unsubscribe(target)

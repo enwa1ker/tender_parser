@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Секретные данные — только из .env, никогда не хардкодим в коде
+TELEGRAM_ADMIN_IDS = os.getenv("TELEGRAM_ADMIN_IDS", "").split(",")
 TELEGRAM_BOT_TOKEN    = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_IDS     = os.getenv("TELEGRAM_CHAT_IDS", "").split(",")
 TELEGRAM_ADMIN_IDS    = [x.strip() for x in os.getenv("TELEGRAM_ADMIN_IDS", "").split(",") if x.strip()]

@@ -151,7 +151,7 @@ def main():
         schedule.run_pending()
         handle_commands()
         check_parser_health()
-        time.sleep(60)  # проверяем расписание каждую минуту
+        time.sleep(5)  # было 60, стало 5 секунд
 
 
 if __name__ == "__main__":
