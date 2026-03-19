@@ -65,30 +65,54 @@ def init_sheets():
 
 
 def add_tender(tender: dict):
-    """
-    Добавляет один тендер в таблицу:
-    - в сводную вкладку "Все тендеры"
-    - в вкладку конкретного источника
-    """
+    """Добавляет тендер в таблицу"""
+    from datetime import datetime
+
     spreadsheet = get_spreadsheet()
 
-    # Формируем строку данных в порядке SHEET_COLUMNS
+    # Считаем дней до дедлайна
+    days_left = ""
+    deadline_str = tender.get("deadline", "")
+    if deadline_str:
+        try:
+            # Пробуем разные форматы даты
+            for fmt in ["%d.%m.%Y %H:%M", "%d.%m.%Y"]:
+                try:
+                    deadline_dt = datetime.strptime(deadline_str[:16], fmt[:len(fmt)])
+                    days = (deadline_dt - datetime.now()).days
+                    if days < 0:
+                        days_left = "⛔ Истёк"
+                    elif days == 0:
+                        days_left = "⚠️ Сегодня"
+                    elif days <= 3:
+                        days_left = f"🔴 {days} дн."
+                    elif days <= 7:
+                        days_left = f"🟡 {days} дн."
+                    else:
+                        days_left = f"🟢 {days} дн."
+                    break
+                except ValueError:
+                    continue
+        except Exception:
+            days_left = ""
+
     row = [
         tender.get("found_at", ""),
         tender.get("title", ""),
         tender.get("customer", ""),
         tender.get("amount", ""),
         tender.get("deadline", ""),
+        days_left,
         tender.get("source", ""),
         tender.get("url", ""),
-        "🟢 Новый",  # статус по умолчанию
+        "🟢 Новый",
     ]
 
     # Добавляем в сводную вкладку
     all_tab = spreadsheet.worksheet(SHEET_ALL_TAB)
     all_tab.append_row(row, value_input_option="RAW")
 
-    # Находим вкладку конкретного источника
+    # Добавляем в вкладку источника
     source_tab_name = None
     for source in SOURCES.values():
         if source["name"] == tender.get("source"):
