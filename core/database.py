@@ -3,21 +3,16 @@
 import os
 from datetime import datetime, date
 
-# Определяем какую базу использовать
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 if DATABASE_URL:
-    # Railway — используем PostgreSQL
     import psycopg2
     import psycopg2.extras
-
     def get_connection():
         return psycopg2.connect(DATABASE_URL)
 else:
-    # Локально — используем SQLite
     import sqlite3
     DB_PATH = os.path.join(os.path.dirname(__file__), "..", "seen_tenders.db")
-
     def get_connection():
         return sqlite3.connect(DB_PATH)
 
@@ -38,14 +33,15 @@ def init_db():
                 source      TEXT NOT NULL,
                 added_at    TEXT NOT NULL,
                 title       TEXT DEFAULT '',
-                url         TEXT DEFAULT ''
+                url         TEXT DEFAULT '',
+                is_relevant BOOLEAN DEFAULT FALSE
             )
         """)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS subscribers (
-                chat_id     TEXT PRIMARY KEY,
-                added_at    TEXT NOT NULL,
-                username    TEXT DEFAULT ''
+                chat_id  TEXT PRIMARY KEY,
+                added_at TEXT NOT NULL,
+                username TEXT DEFAULT ''
             )
         """)
         cursor.execute("""
@@ -54,6 +50,11 @@ def init_db():
                 value TEXT NOT NULL
             )
         """)
+        # Миграция
+        try:
+            cursor.execute("ALTER TABLE seen_tenders ADD COLUMN is_relevant BOOLEAN DEFAULT FALSE")
+        except Exception:
+            pass
     else:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS seen_tenders (
@@ -62,14 +63,15 @@ def init_db():
                 source      TEXT NOT NULL,
                 added_at    TEXT NOT NULL,
                 title       TEXT DEFAULT '',
-                url         TEXT DEFAULT ''
+                url         TEXT DEFAULT '',
+                is_relevant INTEGER DEFAULT 0
             )
         """)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS subscribers (
-                chat_id     TEXT PRIMARY KEY,
-                added_at    TEXT NOT NULL,
-                username    TEXT DEFAULT ''
+                chat_id  TEXT PRIMARY KEY,
+                added_at TEXT NOT NULL,
+                username TEXT DEFAULT ''
             )
         """)
         cursor.execute("""
@@ -78,12 +80,15 @@ def init_db():
                 value TEXT NOT NULL
             )
         """)
-        # Миграция для старой базы
         for col in ["title", "url"]:
             try:
                 cursor.execute(f"ALTER TABLE seen_tenders ADD COLUMN {col} TEXT DEFAULT ''")
             except Exception:
                 pass
+        try:
+            cursor.execute("ALTER TABLE seen_tenders ADD COLUMN is_relevant INTEGER DEFAULT 0")
+        except Exception:
+            pass
         try:
             cursor.execute("ALTER TABLE subscribers ADD COLUMN username TEXT DEFAULT ''")
         except Exception:
@@ -97,27 +102,30 @@ def init_db():
 def is_seen(tender_id: str) -> bool:
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT 1 FROM seen_tenders WHERE tender_id = %s" if _is_pg()
-                   else "SELECT 1 FROM seen_tenders WHERE tender_id = ?", (tender_id,))
+    cursor.execute(
+        "SELECT 1 FROM seen_tenders WHERE tender_id = %s" if _is_pg()
+        else "SELECT 1 FROM seen_tenders WHERE tender_id = ?",
+        (tender_id,)
+    )
     result = cursor.fetchone()
     conn.close()
     return result is not None
 
 
-def mark_seen(tender_id: str, source: str, title: str = "", url: str = ""):
+def mark_seen(tender_id: str, source: str, title: str = "", url: str = "", is_relevant: bool = False):
     conn = get_connection()
     cursor = conn.cursor()
     if _is_pg():
         cursor.execute(
-            "INSERT INTO seen_tenders (tender_id, source, added_at, title, url) "
-            "VALUES (%s, %s, %s, %s, %s) ON CONFLICT (tender_id) DO NOTHING",
-            (tender_id, source, datetime.now().strftime("%d.%m.%Y %H:%M"), title, url)
+            "INSERT INTO seen_tenders (tender_id, source, added_at, title, url, is_relevant) "
+            "VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (tender_id) DO NOTHING",
+            (tender_id, source, datetime.now().strftime("%d.%m.%Y %H:%M"), title, url, is_relevant)
         )
     else:
         cursor.execute(
-            "INSERT OR IGNORE INTO seen_tenders (tender_id, source, added_at, title, url) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (tender_id, source, datetime.now().strftime("%d.%m.%Y %H:%M"), title, url)
+            "INSERT OR IGNORE INTO seen_tenders (tender_id, source, added_at, title, url, is_relevant) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (tender_id, source, datetime.now().strftime("%d.%m.%Y %H:%M"), title, url, int(is_relevant))
         )
     conn.commit()
     conn.close()
@@ -135,9 +143,11 @@ def get_stats() -> dict:
 def get_last_tenders(limit: int = 10) -> list:
     conn = get_connection()
     cursor = conn.cursor()
-    q = "SELECT tender_id, source, added_at, title, url FROM seen_tenders ORDER BY id DESC LIMIT %s" \
+    q = ("SELECT tender_id, source, added_at, title, url FROM seen_tenders "
+         "WHERE is_relevant = TRUE ORDER BY id DESC LIMIT %s") \
         if _is_pg() else \
-        "SELECT tender_id, source, added_at, title, url FROM seen_tenders ORDER BY id DESC LIMIT ?"
+        ("SELECT tender_id, source, added_at, title, url FROM seen_tenders "
+         "WHERE is_relevant = 1 ORDER BY id DESC LIMIT ?")
     cursor.execute(q, (limit,))
     rows = cursor.fetchall()
     conn.close()
