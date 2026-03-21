@@ -375,19 +375,26 @@ def handle_commands():
                     subscribe(target)
                     send_message(f"✅ Добавил подписчика <code>{target}</code>", chat_id=chat_id)
         elif cmd in ("/удалить", "/remove", "/del"):
-            if not _is_admin(chat_id):
-                send_message("⛔ Недостаточно прав.", chat_id=chat_id)
-            else:
-                parts = text.split()
-                if len(parts) < 2:
-                    send_message("Формат: /удалить chat_id", chat_id=chat_id)
+                if not _is_admin(chat_id):
+                    send_message("⛔ Недостаточно прав.", chat_id=chat_id)
                 else:
-                    target = parts[1].strip()
-                    ok = unsubscribe(target)
-                    send_message(
-                        f"✅ Удалил подписчика <code>{target}</code>" if ok else f"ℹ️ Подписчик <code>{target}</code> не найден",
-                        chat_id=chat_id,
-                    )
+                    parts = text.split()
+                    if len(parts) < 2:
+                        send_message("Формат: /удалить chat_id", chat_id=chat_id)
+                    else:
+                        target = parts[1].strip()
+                        ok = unsubscribe(target)
+                        send_message(
+                            f"✅ Удалил подписчика <code>{target}</code>" if ok else f"ℹ️ Подписчик <code>{target}</code> не найден",
+                            chat_id=chat_id,
+                        )
+            elif cmd in ("/fix",):
+                if not _is_admin(chat_id):
+                    send_message("⛔ Недостаточно прав.", chat_id=chat_id)
+                else:
+                    from core.database import fix_relevant_flags
+                    count = fix_relevant_flags()
+                    send_message(f"✅ Обновлено записей: {count}", chat_id=chat_id)
 
     # Сохраняем новый offset (следующий после последнего update_id)
     new_offset = max_update_id + 1 if max_update_id >= 0 else offset

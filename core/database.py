@@ -251,3 +251,36 @@ def count_tenders_for_date(day: date) -> int:
     count = cursor.fetchone()[0]
     conn.close()
     return int(count)
+
+def fix_relevant_flags() -> int:
+    """Помечает старые тендеры в базе как релевантные если они подходят по фильтру"""
+    from core.filter import is_relevant
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    # Берём все тендеры без пометки
+    cursor.execute(
+        "SELECT tender_id, title FROM seen_tenders WHERE is_relevant = FALSE OR is_relevant = 0"
+        if not _is_pg() else
+        "SELECT tender_id, title FROM seen_tenders WHERE is_relevant = FALSE"
+    )
+    rows = cursor.fetchall()
+    
+    count = 0
+    for tender_id, title in rows:
+        if is_relevant(title or ""):
+            if _is_pg():
+                cursor.execute(
+                    "UPDATE seen_tenders SET is_relevant = TRUE WHERE tender_id = %s",
+                    (tender_id,)
+                )
+            else:
+                cursor.execute(
+                    "UPDATE seen_tenders SET is_relevant = 1 WHERE tender_id = ?",
+                    (tender_id,)
+                )
+            count += 1
+    
+    conn.commit()
+    conn.close()
+    return count
