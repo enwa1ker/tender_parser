@@ -170,17 +170,55 @@ def handle_commands():
             return bool(fallback) and str(chat_id).strip() == fallback
         return str(chat_id).strip() in set(TELEGRAM_ADMIN_IDS)
 
-    def _send_list(chat_id: str):
-        tenders = get_last_tenders(10)
+    def _send_list(chat_id: str, page: int = 1):
+        PAGE_SIZE = 5
+        tenders = get_last_tenders(100)  # берём последние 100
+
         if not tenders:
             send_message("📭 Тендеров пока нет.", chat_id=chat_id)
             return
-        msg = "📋 <b>Последние 10 тендеров:</b>\n\n"
-        for i, t in enumerate(tenders, 1):
+
+        total = len(tenders)
+        total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
+        page = max(1, min(page, total_pages))  # защита от выхода за границы
+
+        start = (page - 1) * PAGE_SIZE
+        end = start + PAGE_SIZE
+        page_tenders = tenders[start:end]
+
+        msg = f"📋 <b>Тендеры (стр. {page} из {total_pages}):</b>\n\n"
+        for i, t in enumerate(page_tenders, start + 1):
             title = t["title"][:55] + "..." if len(t["title"]) > 55 else t["title"]
             msg += f"{i}. <a href='{t['url']}'>{title}</a>\n"
             msg += f"   📅 {t['found_at']} | {t['source']}\n\n"
-        send_message(msg, chat_id=chat_id)
+
+        # Кнопки навигации
+        buttons = []
+        if page > 1:
+            buttons.append({"text": "◀", "data": f"список:{page-1}"})
+        buttons.append({"text": f"{page}/{total_pages}", "data": "нет"})
+        if page < total_pages:
+            buttons.append({"text": "▶", "data": f"список:{page+1}"})
+
+        # Отправляем в одну строку
+        reply_markup = {
+            "inline_keyboard": [
+                [
+                    *([{"text": "◀", "callback_data": f"список:{page-1}"}] if page > 1 else []),
+                    {"text": f"{page}/{total_pages}", "callback_data": "нет"},
+                    *([{"text": "▶", "callback_data": f"список:{page+1}"}] if page < total_pages else []),
+                ]
+            ]
+        }
+
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        requests.post(url, json={
+            "chat_id":    chat_id,
+            "text":       msg,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True,
+            "reply_markup": reply_markup,
+        }, timeout=10)
 
     def _send_status(chat_id: str):
         stats = get_stats()
@@ -213,6 +251,7 @@ def handle_commands():
         }, timeout=10)
 
     def _send_subscribers(chat_id: str):
+        # Получаем список подписчиков с их именами (если есть) и датой добавления и отсупыв формате "дата и время"
         subs = get_subscribers()
         if not subs:
             send_message("Подписчиков пока нет.", chat_id=chat_id)
@@ -243,7 +282,7 @@ def handle_commands():
         if isinstance(update_id, int):
             max_update_id = max(max_update_id, update_id)
 
-        # 1) Обработка нажатий на inline-кнопки
+       # 1) Обработка нажатий на inline-кнопки
         callback = update.get("callback_query")
         if callback:
             chat_id = str(callback.get("message", {}).get("chat", {}).get("id", "")).strip()
@@ -252,7 +291,13 @@ def handle_commands():
                 continue
 
             if data == "список":
-                _send_list(chat_id)
+                _send_list(chat_id, page=1)
+            elif data.startswith("список:"):
+                try:
+                    page = int(data.split(":")[1])
+                except Exception:
+                    page = 1
+                _send_list(chat_id, page=page)
             elif data == "статус":
                 _send_status(chat_id)
             elif data == "стоп":
@@ -263,6 +308,8 @@ def handle_commands():
                     else "⛔ Вы уже были отписаны.\nНапишите /старт чтобы подписаться.",
                     chat_id=chat_id,
                 )
+            elif data == "нет":
+                pass  # нажали на номер страницы — ничего не делаем
             continue
 
         # 2) Обработка обычных команд (/start, /статус, /список, /стоп)
