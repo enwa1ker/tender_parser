@@ -1,0 +1,78 @@
+# .github/workflows/parser.yml
+# Запускает парсер тендеров по расписанию через GitHub Actions.
+# Бесплатно — 2000 минут в месяц, каждый запуск ~2-3 мин.
+# Итого: 5 запусков × 3 мин × 30 дней = 450 мин/мес — с запасом!
+
+name: Tender Parser
+
+on:
+  schedule:
+    # Время указано в UTC. Бишкек = UTC+6.
+    # Чтобы получить UTC: вычти 6 часов от бишкекского времени.
+    - cron: '0 2 * * *'    # 08:00 Бишкек (02:00 UTC)
+    - cron: '0 5 * * *'    # 11:00 Бишкек (05:00 UTC)
+    - cron: '0 8 * * *'    # 14:00 Бишкек (08:00 UTC)
+    - cron: '0 11 * * *'   # 17:00 Бишкек (11:00 UTC)
+    - cron: '0 20 * * *'   # 02:00 Бишкек (20:00 UTC пред. день) — ночной прогон
+
+  # Ручной запуск из вкладки Actions на GitHub
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Причина ручного запуска'
+        required: false
+        default: 'manual check'
+
+jobs:
+  parse:
+    name: Run Tender Parser
+    runs-on: ubuntu-latest
+    timeout-minutes: 10  # Убивает job если завис — защита от бесконечного висения
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'  # Кэширует зависимости — ускоряет запуск
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Google credentials хранятся в секрете как JSON-строка
+      - name: Write Google credentials
+        run: echo '${{ secrets.GOOGLE_CREDENTIALS_JSON }}' > credentials.json
+
+      - name: Run parser (single run mode)
+        env:
+          TELEGRAM_BOT_TOKEN:    ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_IDS:     ${{ secrets.TELEGRAM_CHAT_IDS }}
+          TELEGRAM_ADMIN_IDS:    ${{ secrets.TELEGRAM_ADMIN_IDS }}
+          GOOGLE_SHEET_ID:       ${{ secrets.GOOGLE_SHEET_ID }}
+          HEALTHCHECK_URL:       ${{ secrets.HEALTHCHECK_URL }}
+          GOOGLE_CREDENTIALS_FILE: credentials.json
+          # Говорим main.py запуститься один раз и выйти (без while True)
+          SINGLE_RUN_MODE: "true"
+        run: python main.py
+
+      - name: Notify on failure
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ADMIN_IDS: ${{ secrets.TELEGRAM_ADMIN_IDS }}
+        run: |
+          python - <<'EOF'
+          import os, requests
+          token = os.environ["TELEGRAM_BOT_TOKEN"]
+          admins = os.environ["TELEGRAM_ADMIN_IDS"].split(",")
+          msg = "❌ GitHub Actions: парсер упал! Зайди на github.com/Actions и проверь логи."
+          for chat_id in admins:
+              requests.post(
+                  f"https://api.telegram.org/bot{token}/sendMessage",
+                  json={"chat_id": chat_id.strip(), "text": msg},
+                  timeout=10,
+              )
+          EOF

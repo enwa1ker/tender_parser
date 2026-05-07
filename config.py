@@ -1,66 +1,74 @@
 import os
 from dotenv import load_dotenv
 
-# Загружаем переменные из .env файла
 load_dotenv()
 
-# Секретные данные — только из .env, никогда не хардкодим в коде
-TELEGRAM_ADMIN_IDS = os.getenv("TELEGRAM_ADMIN_IDS", "").split(",")
-TELEGRAM_BOT_TOKEN    = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_IDS     = os.getenv("TELEGRAM_CHAT_IDS", "").split(",")
-TELEGRAM_ADMIN_IDS    = [x.strip() for x in os.getenv("TELEGRAM_ADMIN_IDS", "").split(",") if x.strip()]
-GOOGLE_SHEET_ID       = os.getenv("GOOGLE_SHEET_ID")
-GOOGLE_CREDENTIALS    = os.getenv("GOOGLE_CREDENTIALS_FILE", "credentials.json")
-CHECK_INTERVAL_HOURS  = int(os.getenv("CHECK_INTERVAL_HOURS", "3"))
+# ── Telegram ─────────────────────────────────────────────────────────────────
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_IDS  = [x.strip() for x in os.getenv("TELEGRAM_CHAT_IDS", "").split(",") if x.strip()]
+TELEGRAM_ADMIN_IDS = [x.strip() for x in os.getenv("TELEGRAM_ADMIN_IDS", "").split(",") if x.strip()]
 
+# ── Google Sheets ─────────────────────────────────────────────────────────────
+GOOGLE_SHEET_ID   = os.getenv("GOOGLE_SHEET_ID")
+GOOGLE_CREDENTIALS = os.getenv("GOOGLE_CREDENTIALS_FILE", "credentials.json")
+
+# ── Расписание ────────────────────────────────────────────────────────────────
+# Используется только как fallback — основное расписание задаётся в main.py
+CHECK_INTERVAL_HOURS = int(os.getenv("CHECK_INTERVAL_HOURS", "3"))
+
+# ── HTTP настройки ────────────────────────────────────────────────────────────
+# Таймаут на все requests.get() во всех парсерах.
+# Добавь REQUEST_TIMEOUT во все парсеры: requests.get(url, timeout=REQUEST_TIMEOUT)
+REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "15"))
+
+# ── Мониторинг (healthchecks.io) ──────────────────────────────────────────────
+# 1. Зарегистрируйся на https://healthchecks.io (бесплатно)
+# 2. Создай новый check, скопируй URL вида https://hc-ping.com/xxxxxxxx-xxxx-...
+# 3. Добавь в .env: HEALTHCHECK_URL=https://hc-ping.com/твой-uuid
+# Если не задан — мониторинг через healthchecks молча отключается
+HEALTHCHECK_URL = os.getenv("HEALTHCHECK_URL", "")
+
+# ── Ключевые слова фильтрации ─────────────────────────────────────────────────
 KEYWORDS = [
-
-    "электротехн",    # электротехнических, электротехника
-    "электроустановк", # электроустановки
-    "электродвигател", # электродвигатель
-    # Основные (электрика)
+    "электротехн",
+    "электроустановк",
+    "электродвигател",
     "электромонтаж",
     "электропроводк",
     "электрощит",
     "электроснабжен",
-    "электротовар",       # как раз поймали выше
+    "электротовар",
     "электрооборудован",
-    # Работы
-    "монтаж электр",      # монтаж электрики/электрооборудования
-    "прокладк кабел",     # прокладка кабеля/кабелей
-    "кабельн",            # кабельные линии, кабельных сетей
-    "электрик",           # электрика, электрики
-    # Оборудование
+    "монтаж электр",
+    "прокладк кабел",
+    "кабельн",
+    "электрик",
     "трансформатор",
     "подстанци",
-    "генератор",          # дизельгенератор, генераторная
+    "генератор",
     "заземлен",
-    "освещен",            # освещение (уличное, внутреннее)
+    "освещен",
     "электролини",
     "электросеть",
-    "электрическая"
-
+    "электрическая",
 ]
 
-
-# ── Названия вкладок в Google Sheets ────────────────────────────────────────
+# ── Google Sheets — названия вкладок и столбцы ────────────────────────────────
 SHEET_ALL_TAB = "Все тендеры"
 
-# ── Столбцы таблицы (порядок важен!) ────────────────────────────────────────
 SHEET_COLUMNS = [
     "Дата добавления",
     "Название тендера",
     "Заказчик",
     "Сумма (сом)",
     "Дедлайн",
-    "Дней до дедлайна",  # ← новый столбец
+    "Дней до дедлайна",
     "Источник",
     "Ссылка",
     "Статус",
 ]
 
-
-# ── Источники данных ─────────────────────────────────────────────────────────
+# ── Источники данных ──────────────────────────────────────────────────────────
 SOURCES = {
     "gov_kg": {
         "name": "zakupki.gov.kg",

@@ -1,25 +1,39 @@
-# Секретные ключи — НИКОГДА не в Git
+# Секреты — НИКОГДА не должны попасть в git
 .env
+credentials.json
+*.json
 
-# База данных — у каждого своя локальная
+# Состояние парсера — сбрасывается при переезде на новый сервер
+telegram_offset.txt
+parser_state.db
 seen_tenders.db
+*.db
+*.sqlite
+*.sqlite3
 
-# Виртуальное окружение — не нужно в репозитории
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Виртуальное окружение
 venv/
 .venv/
+env/
+.env/
 
-# Кэш Python
-__pycache__/
-*.pyc
-
-# Google ключ — это файл с секретом
-credentials.json
-google_credentials.json
-*.json
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
 
 # Логи
 *.log
 logs/
-
-# Runtime state
-telegram_offset.txt

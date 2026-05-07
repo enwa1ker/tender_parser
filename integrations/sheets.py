@@ -1,126 +1,121 @@
-# integrations/sheets.py — работа с Google Sheets
+# integrations/sheets.py
+# Работа с Google Sheets — добавление тендеров, форматирование, защита от дублей.
 
 import gspread
 from google.oauth2.service_account import Credentials
-from datetime import datetime
-from config import GOOGLE_SHEET_ID, GOOGLE_CREDENTIALS, SHEET_COLUMNS, SHEET_ALL_TAB, SOURCES
+from datetime import datetime, date
+import time
 
-# Права доступа которые запрашиваем у Google
+from config import GOOGLE_SHEET_ID, GOOGLE_CREDENTIALS, SHEET_COLUMNS, SHEET_ALL_TAB
+
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
 ]
 
-
-def get_client():
-    """Подключается к Google Sheets"""
-    import json, base64, os
-
-    credentials_b64 = os.getenv("GOOGLE_CREDENTIALS_JSON")
-
-    if credentials_b64:
-        # Railway — декодируем из base64
-        credentials_json = base64.b64decode(credentials_b64).decode("utf-8")
-        info = json.loads(credentials_json)
-        creds = Credentials.from_service_account_info(info, scopes=SCOPES)
-    else:
-        # Локально — читаем из файла
-        creds = Credentials.from_service_account_file(GOOGLE_CREDENTIALS, scopes=SCOPES)
-
-    return gspread.authorize(creds)
-
-
-def get_spreadsheet():
-    """Открывает нашу таблицу по ID"""
-    client = get_client()
-    return client.open_by_key(GOOGLE_SHEET_ID)
+_client = None
+_sheet = None
 
 
 def init_sheets():
-    """
-    Создаёт все нужные вкладки если их нет.
-    Вызывается один раз при первом запуске.
-    """
-    spreadsheet = get_spreadsheet()
-    existing_tabs = [ws.title for ws in spreadsheet.worksheets()]
+    global _client, _sheet
+    creds = Credentials.from_service_account_file(GOOGLE_CREDENTIALS, scopes=SCOPES)
+    _client = gspread.authorize(creds)
+    _sheet = _client.open_by_key(GOOGLE_SHEET_ID)
+    _ensure_tab(_sheet, SHEET_ALL_TAB)
+    print(f"[sheets] ✅ Подключено к Google Sheets")
 
-    # Список всех нужных вкладок
-    needed_tabs = [SHEET_ALL_TAB] + [s["sheet_tab"] for s in SOURCES.values()]
 
-    for tab_name in needed_tabs:
-        if tab_name not in existing_tabs:
-            worksheet = spreadsheet.add_worksheet(title=tab_name, rows=1000, cols=20)
-            print(f"[Sheets] Создана вкладка: {tab_name}")
-        else:
-            worksheet = spreadsheet.worksheet(tab_name)
-            print(f"[Sheets] Вкладка уже есть: {tab_name}")
+def _ensure_tab(sheet, tab_name: str):
+    """Создаёт вкладку с заголовками если её нет."""
+    try:
+        ws = sheet.worksheet(tab_name)
+        # Проверяем что заголовки на месте
+        headers = ws.row_values(1)
+        if not headers:
+            ws.insert_row(SHEET_COLUMNS, 1)
+            _format_header(ws)
+    except gspread.WorksheetNotFound:
+        ws = sheet.add_worksheet(title=tab_name, rows=1000, cols=len(SHEET_COLUMNS))
+        ws.insert_row(SHEET_COLUMNS, 1)
+        _format_header(ws)
+    return ws
 
-        # Добавляем заголовки если вкладка пустая
-        current_data = worksheet.get_all_values()
-        if not current_data:
-            worksheet.append_row(SHEET_COLUMNS, value_input_option="RAW")
-            print(f"[Sheets] Заголовки добавлены в: {tab_name}")
 
-    print("[Sheets] Инициализация завершена")
+def _format_header(ws):
+    """Делает шапку таблицы жирной с цветом."""
+    try:
+        ws.format("A1:I1", {
+            "backgroundColor": {"red": 0.18, "green": 0.36, "blue": 0.62},
+            "textFormat": {
+                "foregroundColor": {"red": 1, "green": 1, "blue": 1},
+                "bold": True,
+                "fontSize": 10,
+            },
+            "horizontalAlignment": "CENTER",
+        })
+        # Закрепляем первую строку
+        ws.freeze(rows=1)
+    except Exception as e:
+        print(f"[sheets] ⚠️  Не удалось форматировать шапку: {e}")
+
+
+def _days_until(deadline_str: str) -> str:
+    """Считает дней до дедлайна. Возвращает строку или пусто."""
+    if not deadline_str:
+        return ""
+    formats = ["%d.%m.%Y", "%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"]
+    for fmt in formats:
+        try:
+            d = datetime.strptime(deadline_str.strip()[:10], fmt).date()
+            delta = (d - date.today()).days
+            if delta < 0:
+                return "просрочен"
+            return str(delta)
+        except ValueError:
+            continue
+    return ""
 
 
 def add_tender(tender: dict):
-    """Добавляет тендер в таблицу"""
-    from datetime import datetime
+    """Добавляет тендер в главную вкладку и в вкладку источника."""
+    global _sheet
 
-    spreadsheet = get_spreadsheet()
+    ws_all = _sheet.worksheet(SHEET_ALL_TAB)
 
-    # Считаем дней до дедлайна
-    days_left = ""
-    deadline_str = tender.get("deadline", "")
-    if deadline_str:
-        try:
-            # Пробуем разные форматы даты
-            for fmt in ["%d.%m.%Y %H:%M", "%d.%m.%Y"]:
-                try:
-                    deadline_dt = datetime.strptime(deadline_str[:16], fmt[:len(fmt)])
-                    days = (deadline_dt - datetime.now()).days
-                    if days < 0:
-                        days_left = "⛔ Истёк"
-                    elif days == 0:
-                        days_left = "⚠️ Сегодня"
-                    elif days <= 3:
-                        days_left = f"🔴 {days} дн."
-                    elif days <= 7:
-                        days_left = f"🟡 {days} дн."
-                    else:
-                        days_left = f"🟢 {days} дн."
-                    break
-                except ValueError:
-                    continue
-        except Exception:
-            days_left = ""
+    # Вкладка источника (создаём если нет)
+    source_tab = tender.get("source", "Прочие")
+    ws_src = _ensure_tab(_sheet, source_tab)
+
+    now = datetime.now().strftime("%d.%m.%Y %H:%M")
+    deadline = tender.get("deadline", "")
+    days_left = _days_until(deadline)
 
     row = [
-        tender.get("found_at", ""),
+        now,
         tender.get("title", ""),
         tender.get("customer", ""),
         tender.get("amount", ""),
-        tender.get("deadline", ""),
+        deadline,
         days_left,
         tender.get("source", ""),
         tender.get("url", ""),
-        "🟢 Новый",
+        "Новый",
     ]
 
-    # Добавляем в сводную вкладку
-    all_tab = spreadsheet.worksheet(SHEET_ALL_TAB)
-    all_tab.append_row(row, value_input_option="RAW")
+    # Добавляем в обе вкладки
+    ws_all.append_row(row, value_input_option="USER_ENTERED")
+    time.sleep(0.5)  # Защита от rate limit Google API
+    ws_src.append_row(row, value_input_option="USER_ENTERED")
 
-    # Добавляем в вкладку источника
-    source_tab_name = None
-    for source in SOURCES.values():
-        if source["name"] == tender.get("source"):
-            source_tab_name = source["sheet_tab"]
-            break
+    # Красим строку если дедлайн скоро (≤ 3 дней)
+    try:
+        if days_left.isdigit() and int(days_left) <= 3:
+            last_row = len(ws_all.get_all_values())
+            ws_all.format(f"A{last_row}:I{last_row}", {
+                "backgroundColor": {"red": 1.0, "green": 0.9, "blue": 0.8}
+            })
+    except Exception:
+        pass
 
-    if source_tab_name:
-        source_tab = spreadsheet.worksheet(source_tab_name)
-        source_tab.append_row(row, value_input_option="RAW")
-
-    print(f"[Sheets] Добавлен тендер: {tender.get('title', '')[:50]}")
+    print(f"[sheets] ✅ Добавлен: {tender.get('title', '')[:60]}")
