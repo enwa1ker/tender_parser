@@ -1,4 +1,5 @@
 # parsers/okmot_kg.py
+# VERIFY_SSL = False — сайт использует самоподписанный сертификат
 
 from parsers._base_parser import BaseParser
 
@@ -6,17 +7,15 @@ from parsers._base_parser import BaseParser
 class OkmotParser(BaseParser):
     SOURCE_NAME = "zakupki.okmot.kg"
     BASE_URL = "https://zakupki.okmot.kg/popp/view/request/list.xhtml"
+    VERIFY_SSL = False  # ← госсайт, проблемный SSL
 
     def parse_page(self, page: int) -> list[dict]:
-        # okmot.kg — JSF-приложение, пагинация через параметр
         params = {"currentPage": page - 1} if page > 1 else {}
         soup = self.get_html(self.BASE_URL, params=params)
         if not soup:
             return []
 
         tenders = []
-
-        # Таблица закупок
         rows = soup.select("table tbody tr, .ui-datatable tbody tr")
 
         for row in rows:
@@ -55,8 +54,7 @@ class OkmotParser(BaseParser):
                     "pub_date": "",
                 })
             except Exception as e:
-                print(f"[{self.SOURCE_NAME}] ⚠️  Ошибка парсинга строки: {e}")
-                continue
+                print(f"[{self.SOURCE_NAME}] ⚠️  {e}")
 
         return tenders
 
