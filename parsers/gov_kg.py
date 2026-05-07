@@ -1,61 +1,79 @@
 # parsers/gov_kg.py
-# VERIFY_SSL = False — госсайт, самоподписанный сертификат
+# Новый портал ЭГЗ — goszakupki.okmot.kg
+# VERIFY_SSL = False — самоподписанный сертификат
 
-from parsers._base_parser import BaseParser
+import requests
+import json
+from config import REQUEST_TIMEOUT
+import urllib3
 
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-class GovKgParser(BaseParser):
-    SOURCE_NAME = "goszakupki.okmot.kg"
-    BASE_URL = "https://goszakupki.okmot.kg/public/lots"
-    VERIFY_SSL = False  # ← госсайт, проблемный SSL
+SOURCE_NAME = "goszakupki.okmot.kg"
 
-    def parse_page(self, page: int) -> list[dict]:
-        params = {"page": page - 1, "size": 20, "locale": "ru"}
-        soup = self.get_html(self.BASE_URL, params=params)
-        if not soup:
-            return []
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "ru-RU,ru;q=0.9",
+    "Referer": "https://goszakupki.okmot.kg/public/home",
+}
 
-        tenders = []
-        cards = soup.select(".lot-card, .tender-card, .announcement-item, .card, article")
-
-        for card in cards:
-            try:
-                link_el = card.select_one("a[href]")
-                title_el = card.select_one("h3, h4, .title, .lot-title, .name")
-                if not title_el:
-                    continue
-
-                title = title_el.get_text(strip=True)
-                if not title or len(title) < 5:
-                    continue
-
-                href = link_el.get("href", "") if link_el else ""
-                url = href if href.startswith("http") else f"https://goszakupki.okmot.kg{href}"
-
-                lot_id = href.rstrip("/").split("/")[-1] if href else abs(hash(title))
-                tender_id = f"govkg_{lot_id}"
-
-                customer_el = card.select_one(".customer, .organizer, .buyer")
-                amount_el = card.select_one(".amount, .price, .sum")
-                deadline_el = card.select_one(".deadline, .date-end, .end-date")
-
-                tenders.append({
-                    "id": tender_id,
-                    "source": self.SOURCE_NAME,
-                    "title": title,
-                    "url": url,
-                    "customer": customer_el.get_text(strip=True) if customer_el else "",
-                    "amount": amount_el.get_text(strip=True) if amount_el else "",
-                    "deadline": deadline_el.get_text(strip=True) if deadline_el else "",
-                    "pub_date": "",
-                })
-            except Exception as e:
-                print(f"[{self.SOURCE_NAME}] ⚠️  {e}")
-
-        return tenders
+# Пробуем API эндпоинт (сайт на Angular/React — данные через API)
+API_URLS = [
+    "https://goszakupki.okmot.kg/api/public/announcements",
+    "https://goszakupki.okmot.kg/api/lots",
+    "https://goszakupki.okmot.kg/api/tenders",
+]
 
 
-_parser = GovKgParser()
+def _try_api(page: int) -> list[dict]:
+    """Пробуем получить данные через JSON API."""
+    for api_url in API_URLS:
+        try:
+            resp = requests.get(
+                api_url,
+                params={"page": page - 1, "size": 20, "locale": "ru"},
+                headers=HEADERS,
+                timeout=REQUEST_TIMEOUT,
+                verify=False,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                items = data if isinstance(data, list) else data.get("content", data.get("items", data.get("data", [])))
+                if items:
+                    return _parse_items(items)
+        except Exception:
+            continue
+    return []
+
+
+def _parse_items(items: list) -> list[dict]:
+    tenders = []
+    for item in items:
+        try:
+            title = item.get("name") or item.get("title") or item.get("subject") or ""
+            if not title:
+                continue
+            tid = str(item.get("id") or item.get("lotId") or abs(hash(title)))
+            tenders.append({
+                "id": f"govkg_{tid}",
+                "source": SOURCE_NAME,
+                "title": title,
+                "url": item.get("url") or f"https://goszakupki.okmot.kg/public/lots/{tid}",
+                "customer": item.get("customer") or item.get("buyerName") or "",
+                "amount": str(item.get("amount") or item.get("price") or ""),
+                "deadline": item.get("deadline") or item.get("submissionDeadline") or "",
+                "pub_date": item.get("publishDate") or item.get("createdAt") or "",
+            })
+        except Exception:
+            continue
+    return tenders
+
 
 def get_tenders(pages: int = 2) -> list[dict]:
-    return _parser.get_tenders(pages=pages)
+    result = []
+    for page in range(1, pages + 1):
+        tenders = _try_api(page)
+        result.extend(tenders)
+        print(f"[{SOURCE_NAME}] стр.{page}: {len(tenders)} тендеров")
+    return result
