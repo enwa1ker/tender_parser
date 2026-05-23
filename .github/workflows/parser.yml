@@ -51,6 +51,7 @@ jobs:
           HEALTHCHECK_URL:         ${{ secrets.HEALTHCHECK_URL }}
           GOOGLE_CREDENTIALS_FILE: credentials.json
           SINGLE_RUN_MODE:         "true"
+          DATABASE_URL:            ${{ secrets.DATABASE_URL }}  # ← добавить эту строку
         run: python main.py
 
       - name: Notify admins on failure
