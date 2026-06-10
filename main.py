@@ -21,6 +21,8 @@ from integrations.sheets import init_sheets, add_tender
 from integrations.telegram_bot import notify_tender, notify_error, handle_commands, broadcast
 
 SINGLE_RUN_MODE = os.getenv("SINGLE_RUN_MODE", "false").lower() == "true"
+# В main.py — добавить после импортов
+SEED_MODE = os.getenv("SEED_MODE", "false").lower() == "true"
 
 
 def fetch_with_retry(parser_func, source_name, pages=2, retries=3, delay=30):
@@ -87,17 +89,23 @@ def run_parser():
                       is_relevant=False)
             continue
 
+        mark_seen(tender["id"], tender["source"],
+                  title=tender.get("title", ""), url=tender.get("url", ""),
+                  is_relevant=True)
+
+        if SEED_MODE:
+            print(f"[main] 🌱 SEED: {tender['title'][:70]}")
+            continue  # ← не отправляем, только записываем в БД
+
         print(f"[main] ✅ {tender['title'][:70]}")
         try:
             add_tender(tender)
             notify_tender(tender)
-            mark_seen(tender["id"], tender["source"],
-                      title=tender.get("title", ""), url=tender.get("url", ""),
-                      is_relevant=True)
             new_count += 1
             time.sleep(1)
         except Exception as e:
             print(f"[main] ❌ Ошибка сохранения: {e}")
+
 
     print(f"\n[main] Новых релевантных: {new_count}")
     kv_set("parser:last_run_finished", datetime.now().isoformat(timespec="seconds"))
